@@ -1,0 +1,20 @@
+{
+  "name": "prompts-para-historias",
+  "version": "1.0.0",
+  "description": "Ferramenta que recebe narrações em .srt e gera prompts de imagens em movimento consistentes para acompanhar a história",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js"
+  },
+  "keywords": ["srt", "prompts", "openai", "storytelling", "image-generation"],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "express": "^4.21.0",
+    "dotenv": "^16.4.5",
+    "openai": "^4.73.0",
+    "multer": "^1.4.5-lts.1",
+    "cors": "^2.8.5"
+  }
+}

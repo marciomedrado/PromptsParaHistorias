@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="Ferramenta que recebe narrações em .srt e gera prompts de imagens em movimento consistentes para acompanhar a história">
+  <title>PromptsParaHistorias — Gerador de Prompts Visuais</title>
+  <link rel="stylesheet" href="styles.css">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎬</text></svg>">
+</head>
+<body>
+
+  <!-- Background Effects -->
+  <div class="bg-effects">
+    <div class="bg-orb bg-orb-1"></div>
+    <div class="bg-orb bg-orb-2"></div>
+    <div class="bg-orb bg-orb-3"></div>
+  </div>
+
+  <!-- Loading Overlay -->
+  <div class="loading-overlay" id="loadingOverlay">
+    <div class="loading-spinner"></div>
+    <div class="loading-text" id="loadingText">Analisando história...</div>
+    <div class="loading-subtext" id="loadingSubtext">Isso pode levar alguns segundos</div>
+    <div class="progress-bar">
+      <div class="progress-fill" id="progressFill"></div>
+    </div>
+  </div>
+
+  <!-- Toast Container -->
+  <div class="toast-container" id="toastContainer"></div>
+
+  <div class="app-container">
+
+    <!-- Header -->
+    <header class="app-header">
+      <div class="app-logo">
+        <div class="logo-icon">🎬</div>
+        <h1 class="app-title">PromptsParaHistorias</h1>
+      </div>
+      <p class="app-subtitle">Transforme narrações em .srt em prompts de imagens em movimento com consistência visual total</p>
+    </header>
+
+    <!-- Status Bar -->
+    <div class="status-bar">
+      <div class="status-dot" id="statusDot"></div>
+      <span id="statusText">Verificando conexão com API...</span>
+    </div>
+
+    <!-- Step Navigation -->
+    <nav class="step-nav" id="stepNav">
+      <div class="step-nav-item current" data-step="1">
+        <span>📁</span> Upload SRT
+      </div>
+      <div class="step-nav-connector">→</div>
+      <div class="step-nav-item" data-step="2">
+        <span>🎨</span> Estilo Visual
+      </div>
+      <div class="step-nav-connector">→</div>
+      <div class="step-nav-item" data-step="3">
+        <span>🧩</span> Elementos
+      </div>
+      <div class="step-nav-connector">→</div>
+      <div class="step-nav-item" data-step="4">
+        <span>🎬</span> Cenas
+      </div>
+    </nav>
+
+    <!-- ====== STEP 1: UPLOAD ====== -->
+    <section class="step active" id="step1">
+      <div class="step-header">
+        <div class="step-number">1</div>
+        <div>
+          <h2 class="step-title">Upload do Arquivo SRT</h2>
+          <p class="step-description">Carregue o arquivo de narração .srt da sua história</p>
+        </div>
+      </div>
+
+      <div class="upload-zone" id="uploadZone">
+        <span class="upload-icon">📄</span>
+        <div class="upload-text">Arraste o arquivo .srt aqui ou clique para selecionar</div>
+        <div class="upload-hint">Apenas arquivos .srt são aceitos</div>
+        <input type="file" id="fileInput" accept=".srt">
+      </div>
+
+      <div class="file-info" id="fileInfo">
+        <h3 style="font-size: 16px; margin-bottom: 4px;" id="fileName"></h3>
+        <div class="file-stats" id="fileStats"></div>
+        <div class="btn-group">
+          <button class="btn btn-primary" id="btnAnalyze" disabled>
+            🔍 Analisar História
+          </button>
+        </div>
+      </div>
+    </section>
+
+    <!-- ====== STEP 2: STYLE SELECTION ====== -->
+    <section class="step" id="step2">
+      <div class="step-header">
+        <div class="step-number">2</div>
+        <div>
+          <h2 class="step-title">Selecione o Estilo Visual</h2>
+          <p class="step-description">Escolha o estilo artístico para todos os prompts de imagem</p>
+        </div>
+      </div>
+
+      <div class="style-grid" id="styleGrid"></div>
+
+      <div class="custom-style-input" id="customStyleInput">
+        <div class="form-group">
+          <label class="form-label">Descreva seu estilo personalizado</label>
+          <textarea class="form-textarea" id="customStyleText" rows="3"
+            placeholder="Ex: Estilo aquarela mágica com cores vibrantes, contornos suaves e textura de papel artesanal..."></textarea>
+        </div>
+      </div>
+
+      <div class="btn-group">
+        <button class="btn btn-secondary" onclick="goToStep(1)">← Voltar</button>
+        <button class="btn btn-primary" id="btnConfirmStyle" disabled>
+          ✨ Gerar Prompts dos Elementos
+        </button>
+      </div>
+    </section>
+
+    <!-- ====== STEP 3: ELEMENTS ====== -->
+    <section class="step" id="step3">
+      <div class="step-header">
+        <div class="step-number">3</div>
+        <div>
+          <h2 class="step-title">Elementos da História</h2>
+          <p class="step-description">Revise, edite, adicione ou remova elementos antes de gerar as cenas</p>
+        </div>
+      </div>
+
+      <div class="elements-grid" id="elementsGrid"></div>
+
+      <!-- Add Element Section -->
+      <div class="add-element-section">
+        <h3>➕ Adicionar Novo Elemento</h3>
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label">Tipo</label>
+            <select class="form-select" id="newElementType">
+              <option value="character">Personagem</option>
+              <option value="location">Local</option>
+              <option value="object">Objeto</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Nome</label>
+            <input class="form-input" id="newElementName" placeholder="Nome do elemento">
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group full">
+            <label class="form-label">Descrição Detalhada</label>
+            <textarea class="form-textarea" id="newElementDesc" rows="4"
+              placeholder="Descreva em detalhes todas as características visuais deste elemento..."></textarea>
+          </div>
+        </div>
+        <button class="btn btn-secondary" id="btnAddElement">➕ Adicionar Elemento</button>
+      </div>
+
+      <div class="btn-group">
+        <button class="btn btn-secondary" onclick="goToStep(2)">← Voltar</button>
+        <button class="btn btn-primary" id="btnGenerateScenes">
+          🎬 Gerar Prompts de Cenas
+        </button>
+      </div>
+    </section>
+
+    <!-- ====== STEP 4: SCENES ====== -->
+    <section class="step" id="step4">
+      <div class="step-header">
+        <div class="step-number">4</div>
+        <div>
+          <h2 class="step-title">Prompts de Cenas em Movimento</h2>
+          <p class="step-description">Prompts gerados com consistência visual para cada cena da história</p>
+        </div>
+      </div>
+
+      <div class="scenes-list" id="scenesList"></div>
+
+      <div class="export-section" id="exportSection" style="display: none;">
+        <h3>📥 Exportar Prompts</h3>
+        <p class="export-info">Os prompts foram salvos em arquivos de texto separados por quebra de linha vazia</p>
+        <div class="btn-group" style="justify-content: center;">
+          <button class="btn btn-primary" id="btnDownloadFull">
+            📄 Download Completo (com marcações)
+          </button>
+          <button class="btn btn-secondary" id="btnDownloadClean">
+            📋 Download Limpo (apenas prompts)
+          </button>
+          <button class="btn btn-secondary" id="btnCopyAll">
+            📋 Copiar Todos
+          </button>
+        </div>
+      </div>
+
+      <div class="btn-group">
+        <button class="btn btn-secondary" onclick="goToStep(3)">← Voltar para Elementos</button>
+      </div>
+    </section>
+
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
