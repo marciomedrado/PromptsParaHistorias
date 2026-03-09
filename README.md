@@ -5,10 +5,10 @@ Ferramenta que recebe narrações em .srt e gera prompts de imagens em movimento
 ## Como Usar
 
 1. Clone o repositório
-2. Copie `.env.example` para `.env` e adicione sua chave da OpenAI
-3. Instale as dependências: `npm install`
-4. Inicie o servidor: `npm start`
-5. Acesse `http://localhost:3000`
+1. Copie `.env.example` para `.env` e adicione sua chave da OpenAI
+2. Basta clicar duas vezes em `INICIAR_APP.bat` para abrir tudo automaticamente.
+3. Ou use: `npm install` e `npm start`
+4. Acesse `http://localhost:3500`
 
 ## Funcionalidades
 

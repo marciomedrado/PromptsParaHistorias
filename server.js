@@ -7,7 +7,7 @@ const fs = require('fs');
 const OpenAI = require('openai');
 
 const app = express();
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 3500;
 
 // OpenAI client
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
@@ -18,15 +18,16 @@ app.use(express.json({ limit: '50mb' }));
 app.use(express.static(path.join(__dirname, 'public')));
 
 // Ensure directories exist
+const dataDir = process.cwd();
 const dirs = ['uploads', 'output', 'output/elements', 'output/scenes'];
 dirs.forEach(dir => {
-  const dirPath = path.join(__dirname, dir);
+  const dirPath = path.join(dataDir, dir);
   if (!fs.existsSync(dirPath)) fs.mkdirSync(dirPath, { recursive: true });
 });
 
 // Multer config for SRT upload
 const storage = multer.diskStorage({
-  destination: (req, file, cb) => cb(null, path.join(__dirname, 'uploads')),
+  destination: (req, file, cb) => cb(null, path.join(process.cwd(), 'uploads')),
   filename: (req, file, cb) => cb(null, `${Date.now()}-${file.originalname}`)
 });
 const upload = multer({
@@ -244,7 +245,7 @@ async function generateScenePrompts(scenes, elements, style) {
 
   for (let i = 0; i < scenes.length; i += batchSize) {
     const batch = scenes.slice(i, i + batchSize);
-    
+
     const response = await openai.chat.completions.create({
       model: 'gpt-4o-mini',
       messages: [
@@ -336,13 +337,13 @@ app.post('/api/analyze', async (req, res) => {
     if (!fullText) return res.status(400).json({ error: 'Texto não fornecido' });
 
     const elements = await analyzeStory(fullText);
-    
+
     // Save elements to individual files
     const allElements = [];
 
     if (elements.characters) {
       for (const char of elements.characters) {
-        const filePath = path.join(__dirname, 'output', 'elements', `${char.id}.json`);
+        const filePath = path.join(process.cwd(), 'output', 'elements', `${char.id}.json`);
         fs.writeFileSync(filePath, JSON.stringify(char, null, 2));
         allElements.push(char);
       }
@@ -350,7 +351,7 @@ app.post('/api/analyze', async (req, res) => {
 
     if (elements.locations) {
       for (const loc of elements.locations) {
-        const filePath = path.join(__dirname, 'output', 'elements', `${loc.id}.json`);
+        const filePath = path.join(process.cwd(), 'output', 'elements', `${loc.id}.json`);
         fs.writeFileSync(filePath, JSON.stringify(loc, null, 2));
         allElements.push(loc);
       }
@@ -358,7 +359,7 @@ app.post('/api/analyze', async (req, res) => {
 
     if (elements.objects) {
       for (const obj of elements.objects) {
-        const filePath = path.join(__dirname, 'output', 'elements', `${obj.id}.json`);
+        const filePath = path.join(process.cwd(), 'output', 'elements', `${obj.id}.json`);
         fs.writeFileSync(filePath, JSON.stringify(obj, null, 2));
         allElements.push(obj);
       }
@@ -366,7 +367,7 @@ app.post('/api/analyze', async (req, res) => {
 
     if (elements.environment) {
       const env = elements.environment;
-      const filePath = path.join(__dirname, 'output', 'elements', `${env.id}.json`);
+      const filePath = path.join(process.cwd(), 'output', 'elements', `${env.id}.json`);
       fs.writeFileSync(filePath, JSON.stringify(env, null, 2));
       allElements.push(env);
     }
@@ -389,11 +390,11 @@ app.post('/api/generate-element-prompts', async (req, res) => {
     for (const element of elements) {
       const prompt = await generateElementPrompt(element, style);
       element.prompt = prompt;
-      
+
       // Save updated element
-      const filePath = path.join(__dirname, 'output', 'elements', `${element.id}.json`);
+      const filePath = path.join(process.cwd(), 'output', 'elements', `${element.id}.json`);
       fs.writeFileSync(filePath, JSON.stringify(element, null, 2));
-      
+
       updatedElements.push(element);
     }
 
@@ -409,10 +410,10 @@ app.put('/api/elements/:id', (req, res) => {
   try {
     const { id } = req.params;
     const updatedElement = req.body;
-    
-    const filePath = path.join(__dirname, 'output', 'elements', `${id}.json`);
+
+    const filePath = path.join(process.cwd(), 'output', 'elements', `${id}.json`);
     fs.writeFileSync(filePath, JSON.stringify(updatedElement, null, 2));
-    
+
     res.json({ success: true, element: updatedElement });
   } catch (err) {
     console.error('Update element error:', err);
@@ -424,12 +425,12 @@ app.put('/api/elements/:id', (req, res) => {
 app.delete('/api/elements/:id', (req, res) => {
   try {
     const { id } = req.params;
-    const filePath = path.join(__dirname, 'output', 'elements', `${id}.json`);
-    
+    const filePath = path.join(process.cwd(), 'output', 'elements', `${id}.json`);
+
     if (fs.existsSync(filePath)) {
       fs.unlinkSync(filePath);
     }
-    
+
     res.json({ success: true });
   } catch (err) {
     console.error('Delete element error:', err);
@@ -441,14 +442,14 @@ app.delete('/api/elements/:id', (req, res) => {
 app.post('/api/elements', async (req, res) => {
   try {
     const { element, style } = req.body;
-    
+
     // Generate prompt for new element
     const prompt = await generateElementPrompt(element, style);
     element.prompt = prompt;
-    
-    const filePath = path.join(__dirname, 'output', 'elements', `${element.id}.json`);
+
+    const filePath = path.join(process.cwd(), 'output', 'elements', `${element.id}.json`);
     fs.writeFileSync(filePath, JSON.stringify(element, null, 2));
-    
+
     res.json({ success: true, element });
   } catch (err) {
     console.error('Add element error:', err);
@@ -465,23 +466,23 @@ app.post('/api/generate-scenes', async (req, res) => {
     }
 
     const scenePrompts = await generateScenePrompts(scenes, elements, style);
-    
+
     // Save to file with empty line between prompts
     const outputText = scenePrompts.map((sp, i) => {
       return `[Scene ${sp.sceneNumber} | ${scenes[i]?.startTime || ''} → ${scenes[i]?.endTime || ''}]\n${sp.prompt}`;
     }).join('\n\n');
-    
-    const outputPath = path.join(__dirname, 'output', 'scenes', `scene_prompts_${Date.now()}.txt`);
+
+    const outputPath = path.join(process.cwd(), 'output', 'scenes', `scene_prompts_${Date.now()}.txt`);
     fs.writeFileSync(outputPath, outputText, 'utf-8');
-    
+
     // Also save a clean version (prompts only, no headers)
     const cleanText = scenePrompts.map(sp => sp.prompt).join('\n\n');
-    const cleanPath = path.join(__dirname, 'output', 'scenes', `scene_prompts_clean_${Date.now()}.txt`);
+    const cleanPath = path.join(process.cwd(), 'output', 'scenes', `scene_prompts_clean_${Date.now()}.txt`);
     fs.writeFileSync(cleanPath, cleanText, 'utf-8');
 
-    res.json({ 
-      success: true, 
-      scenePrompts, 
+    res.json({
+      success: true,
+      scenePrompts,
       outputFile: outputPath,
       cleanFile: cleanPath
     });
@@ -493,7 +494,7 @@ app.post('/api/generate-scenes', async (req, res) => {
 
 // Download scene prompts file
 app.get('/api/download-scenes/:filename', (req, res) => {
-  const filePath = path.join(__dirname, 'output', 'scenes', req.params.filename);
+  const filePath = path.join(process.cwd(), 'output', 'scenes', req.params.filename);
   if (fs.existsSync(filePath)) {
     res.download(filePath);
   } else {
@@ -503,13 +504,17 @@ app.get('/api/download-scenes/:filename', (req, res) => {
 
 // Health check
 app.get('/api/health', (req, res) => {
-  res.json({ 
-    status: 'ok', 
+  res.json({
+    status: 'ok',
     apiKeyConfigured: !!process.env.OPENAI_API_KEY && process.env.OPENAI_API_KEY !== 'your_openai_api_key_here'
   });
 });
 
 app.listen(PORT, () => {
-  console.log(`\n🎬 PromptsParaHistorias rodando em http://localhost:${PORT}`);
+  const url = `http://localhost:${PORT}`;
+  console.log(`\n🎬 PromptsParaHistorias rodando em ${url}`);
   console.log(`   API Key configurada: ${!!process.env.OPENAI_API_KEY && process.env.OPENAI_API_KEY !== 'your_openai_api_key_here'}`);
+
+  // Abrir navegador automaticamente no Windows
+  require('child_process').exec(`start ${url}`);
 });
