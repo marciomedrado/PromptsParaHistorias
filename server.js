@@ -79,50 +79,62 @@ function msToTime(ms) {
   return `${h}:${m}:${s},${mil}`;
 }
 
-// Split SRT into 6-second max scenes
-function splitIntoScenes(entries) {
-  const MAX_SCENE_MS = 6000;
-  const scenes = [];
-  let sceneIndex = 1;
+function timeStrToMs(str) {
+  if (!str || str.toLowerCase() === 'fim') return Infinity;
+  const parts = str.split(':').map(Number);
+  if (parts.length === 2) {
+    return (parts[0] * 60 + parts[1]) * 1000;
+  } else if (parts.length === 3) {
+    return (parts[0] * 3600 + parts[1] * 60 + parts[2]) * 1000;
+  }
+  return 0;
+}
 
-  for (const entry of entries) {
-    const duration = entry.endMs - entry.startMs;
+// Split SRT into sections based on the user's defined time blocks
+function splitIntoScenes(entries, densityRules = [], totalDurationMs = 0) {
+  const sections = [];
+  let sectionIndex = 1;
 
-    if (duration <= MAX_SCENE_MS) {
-      scenes.push({
-        sceneNumber: sceneIndex++,
-        startMs: entry.startMs,
-        endMs: entry.endMs,
-        startTime: msToTime(entry.startMs),
-        endTime: msToTime(entry.endMs),
-        duration: duration,
-        narration: entry.text
-      });
-    } else {
-      // Split into multiple scenes of max 6 seconds
-      const numScenes = Math.ceil(duration / MAX_SCENE_MS);
-      const words = entry.text.split(/\s+/);
-      const wordsPerScene = Math.ceil(words.length / numScenes);
+  if (entries.length === 0) return sections;
 
-      for (let i = 0; i < numScenes; i++) {
-        const sceneStartMs = entry.startMs + (i * MAX_SCENE_MS);
-        const sceneEndMs = Math.min(entry.startMs + ((i + 1) * MAX_SCENE_MS), entry.endMs);
-        const sceneWords = words.slice(i * wordsPerScene, (i + 1) * wordsPerScene);
+  for (const rule of densityRules) {
+    let startMs = rule.startMs;
+    let endMs = isFinite(rule.endMs) ? rule.endMs : totalDurationMs;
+    endMs = Math.max(startMs, endMs);
 
-        scenes.push({
-          sceneNumber: sceneIndex++,
-          startMs: sceneStartMs,
-          endMs: sceneEndMs,
-          startTime: msToTime(sceneStartMs),
-          endTime: msToTime(sceneEndMs),
-          duration: sceneEndMs - sceneStartMs,
-          narration: sceneWords.join(' ')
-        });
+    const bucketEntries = [];
+    for (const entry of entries) {
+      const entryMid = entry.startMs + (entry.endMs - entry.startMs) / 2;
+      if (entryMid >= startMs && entryMid < endMs) {
+        bucketEntries.push(entry.text);
       }
     }
+
+    // Edge case: if it's the last rule, sweep the rest
+    if (rule === densityRules[densityRules.length - 1]) {
+      for (const entry of entries) {
+        const entryMid = entry.startMs + (entry.endMs - entry.startMs) / 2;
+        if (entryMid >= endMs) {
+          if (!bucketEntries.includes(entry.text)) {
+            bucketEntries.push(entry.text);
+          }
+        }
+      }
+    }
+
+    sections.push({
+      sceneNumber: sectionIndex++,
+      startMs: startMs,
+      endMs: endMs,
+      startTime: msToTime(startMs).split(',')[0],
+      endTime: isFinite(rule.endMs) ? msToTime(endMs).split(',')[0] : 'Fim',
+      duration: endMs - startMs,
+      targetImages: rule.density || 1,
+      narration: bucketEntries.join(' ').trim() || "(Nenhuma narração neste trecho)"
+    });
   }
 
-  return scenes;
+  return sections;
 }
 
 // =============== OPENAI FUNCTIONS ===============
@@ -231,23 +243,18 @@ Respond with ONLY the prompt text, nothing else.`
   return response.choices[0].message.content.trim();
 }
 
-async function generateScenePrompts(scenes, elements, style) {
+async function generateScenePrompts(trechos, elements, style, fullText) {
   // Build element reference map
-  const elementMap = {};
-  for (const el of elements) {
-    elementMap[el.id] = el;
-  }
-
   const allElementsRef = elements.map(el => `[${el.id}]: ${el.name} - ${el.prompt}`).join('\n\n');
 
   const scenePrompts = [];
-  const batchSize = 5;
+  let globalSceneNumber = 1;
 
-  for (let i = 0; i < scenes.length; i += batchSize) {
-    const batch = scenes.slice(i, i + batchSize);
+  console.log(`Buscando prompts para ${trechos.length} trechos selecionados...`);
 
+  for (const trecho of trechos) {
     const response = await openai.chat.completions.create({
-      model: 'gpt-4o-mini',
+      model: 'gpt-4o',
       messages: [
         {
           role: 'system',
@@ -261,16 +268,16 @@ CRITICAL RULES:
 5. Include lighting, atmosphere, and mood for each scene.
 6. Write in English.
 7. Do NOT use markdown formatting. Each prompt should be plain text.
-8. Each scene represents a maximum of 6 seconds of motion.
 
 ELEMENT REFERENCE DESCRIPTIONS (use these EXACTLY in scene prompts when the element appears):
 ${allElementsRef}
+
+You will be given a section of the story's narration, and you MUST generate EXACTLY the requested number of image prompts that evenly cover the narrative progression of this section. Ensure the chronological sequence flows logically.
 
 Respond in JSON format:
 {
   "scenes": [
     {
-      "sceneNumber": 1,
       "prompt": "Complete scene prompt with full element descriptions included inline..."
     }
   ]
@@ -278,22 +285,38 @@ Respond in JSON format:
         },
         {
           role: 'user',
-          content: `Generate motion scene prompts for these scenes. For each scene, identify which elements appear and include their FULL descriptions from the reference:\n\n${JSON.stringify(batch.map(s => ({
-            sceneNumber: s.sceneNumber,
-            startTime: s.startTime,
-            endTime: s.endTime,
-            duration: s.duration + 'ms',
-            narration: s.narration
-          })))}`
+          content: `STORY CONTEXT (Full Text - For Reference):
+${fullText}
+
+---
+
+CURRENT SECTION TO PROCESS:
+Time range: ${trecho.startTime} to ${trecho.endTime}
+Requested Number of Images: EXACTLY ${trecho.targetImages} images for this section.
+
+NARRATION FOR THIS NOVEL SECTION:
+${trecho.narration}
+
+Please generate EXACTLY ${trecho.targetImages} image prompts that visually translate this section's narration in sequential order. Make sure you output an array of exactly ${trecho.targetImages} items in the "scenes" array.`
         }
       ],
       temperature: 0.5,
-      max_tokens: 4000,
+      max_tokens: 12000,
       response_format: { type: 'json_object' }
     });
 
     const result = JSON.parse(response.choices[0].message.content);
-    scenePrompts.push(...result.scenes);
+
+    // Assign global scene numbers and attach trecho details
+    for (const s of result.scenes) {
+      scenePrompts.push({
+        sceneNumber: globalSceneNumber++,
+        prompt: s.prompt,
+        startTime: trecho.startTime,
+        endTime: trecho.endTime,
+        narration: trecho.narration
+      });
+    }
   }
 
   return scenePrompts;
@@ -306,19 +329,40 @@ app.post('/api/upload', upload.single('srt'), async (req, res) => {
   try {
     if (!req.file) return res.status(400).json({ error: 'Nenhum arquivo enviado' });
 
+    let rawRules = [];
+    try {
+      if (req.body.densityRules) {
+        rawRules = JSON.parse(req.body.densityRules);
+      }
+    } catch (e) {
+      console.error("Erro parsing densityRules", e);
+    }
+
+    if (rawRules.length === 0) {
+      rawRules = [{ start: '00:00', end: 'Fim', density: 10 }];
+    }
+
+    const densityRules = rawRules.map(r => ({
+      startMs: timeStrToMs(r.start),
+      endMs: r.end ? timeStrToMs(r.end) : Infinity,
+      density: parseInt(r.density) || 10
+    }));
+
     const content = fs.readFileSync(req.file.path, 'utf-8');
     const entries = parseSRT(content);
-    const scenes = splitIntoScenes(entries);
-    const fullText = entries.map(e => e.text).join(' ');
 
-    // Get total duration
+    // Get total duration beforehand
     const totalDuration = entries.length > 0 ? entries[entries.length - 1].endMs : 0;
+
+    const scenes = splitIntoScenes(entries, densityRules, totalDuration);
+    const fullText = entries.map(e => e.text).join(' ');
 
     res.json({
       success: true,
       filename: req.file.originalname,
+      densityRules,
       totalEntries: entries.length,
-      totalScenes: scenes.length,
+      totalScenes: densityRules.reduce((sum, rule) => sum + (parseInt(rule.density) || 0), 0),
       totalDuration,
       totalDurationFormatted: msToTime(totalDuration),
       fullText,
@@ -457,15 +501,14 @@ app.post('/api/elements', async (req, res) => {
   }
 });
 
-// Generate scene prompts
 app.post('/api/generate-scenes', async (req, res) => {
   try {
-    const { scenes, elements, style } = req.body;
+    const { scenes, elements, style, fullText } = req.body;
     if (!scenes || !elements || !style) {
       return res.status(400).json({ error: 'Cenas, elementos e estilo são obrigatórios' });
     }
 
-    const scenePrompts = await generateScenePrompts(scenes, elements, style);
+    const scenePrompts = await generateScenePrompts(scenes, elements, style, fullText || '');
 
     // Save to file with empty line between prompts
     const outputText = scenePrompts.map((sp, i) => {

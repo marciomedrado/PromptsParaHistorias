@@ -8,8 +8,10 @@ const state = {
     elements: [],
     selectedStyle: '',
     scenePrompts: [],
-    outputFiles: {}
+    outputFiles: {},
+    densityRules: [{ start: '00:00', end: '', density: 10 }]
 };
+
 
 // =============== VISUAL STYLES ===============
 const VISUAL_STYLES = [
@@ -97,6 +99,7 @@ document.addEventListener('DOMContentLoaded', () => {
     checkApiHealth();
     initUploadZone();
     renderStyleGrid();
+    renderDensityRules();
     initEventListeners();
 });
 
@@ -160,6 +163,7 @@ async function handleFile(file) {
 
     const formData = new FormData();
     formData.append('srt', file);
+    formData.append('densityRules', JSON.stringify(state.densityRules));
 
     try {
         const res = await fetch('/api/upload', { method: 'POST', body: formData });
@@ -180,7 +184,7 @@ async function handleFile(file) {
       </div>
       <div class="stat-card">
         <div class="stat-value">${data.totalScenes}</div>
-        <div class="stat-label">Cenas (≤6s)</div>
+        <div class="stat-label">Cenas</div>
       </div>
       <div class="stat-card">
         <div class="stat-value">${data.totalDurationFormatted.split(',')[0]}</div>
@@ -308,6 +312,23 @@ async function generateElementPrompts() {
 function renderElements() {
     const grid = document.getElementById('elementsGrid');
     grid.innerHTML = state.elements.map((el, idx) => createElementCard(el, idx)).join('');
+    renderSceneSelection();
+}
+
+function renderSceneSelection() {
+    const grid = document.getElementById('scenesSelectionGrid');
+    if (!grid) return;
+
+    grid.innerHTML = state.scenes.map((scene, idx) => `
+        <div class="scene-selection-item">
+            <input type="checkbox" id="scene-check-${scene.sceneNumber}" class="scene-checkbox" value="${idx}" checked>
+            <label for="scene-check-${scene.sceneNumber}">
+                <span class="scene-num">Trecho #${scene.sceneNumber} (${scene.targetImages} imgs)</span>
+                <span class="scene-time">${scene.startTime} → ${scene.endTime}</span>
+                <span class="scene-text" style="-webkit-line-clamp: 5;">${scene.narration}</span>
+            </label>
+        </div>
+    `).join('');
 }
 
 function createElementCard(element, index) {
@@ -496,7 +517,17 @@ async function addNewElement() {
 
 // =============== SCENE GENERATION ===============
 async function generateScenes() {
-    showLoading('Gerando prompts de cenas em movimento...', `Processando ${state.scenes.length} cenas com referência de ${state.elements.length} elementos`);
+    const selectedIndices = Array.from(document.querySelectorAll('.scene-checkbox:checked'))
+        .map(cb => parseInt(cb.value));
+
+    if (selectedIndices.length === 0) {
+        showToast('Selecione pelo menos um trecho para gerar', 'error');
+        return;
+    }
+
+    const selectedScenes = selectedIndices.map(idx => state.scenes[idx]);
+
+    showLoading('Gerando prompts de cenas em movimento...', `Processando ${selectedScenes.length} cenas com referência de ${state.elements.length} elementos`);
     setProgress(5);
 
     try {
@@ -504,9 +535,10 @@ async function generateScenes() {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-                scenes: state.scenes,
+                scenes: selectedScenes,
                 elements: state.elements,
-                style: state.selectedStyle
+                style: state.selectedStyle,
+                fullText: state.fullText
             })
         });
 
@@ -534,15 +566,15 @@ async function generateScenes() {
 
 function renderScenes() {
     const list = document.getElementById('scenesList');
-    list.innerHTML = state.scenePrompts.map((sp, i) => {
-        const scene = state.scenes[i] || {};
+    list.innerHTML = state.scenePrompts.map((sp) => {
         return `
       <div class="scene-card">
         <div class="scene-card-header">
-          <span class="scene-number">Cena ${sp.sceneNumber}</span>
-          <span class="scene-time">${scene.startTime || ''} → ${scene.endTime || ''} (${scene.duration ? (scene.duration / 1000).toFixed(1) + 's' : ''})</span>
+          <span class="scene-number">Cena ${sp.sceneNumber} (Trecho ${sp.startTime || ''} → ${sp.endTime || ''})</span>
         </div>
-        <div class="scene-narration">"${scene.narration || ''}"</div>
+        <div class="scene-narration" style="font-size: 0.85rem; color: var(--text-dim); margin-bottom: 12px; border-left: 3px solid var(--accent); padding-left: 10px;">
+            "${(sp.narration || '').substring(0, 300)}${(sp.narration || '').length > 300 ? '...' : ''}"
+        </div>
         <div class="prompt-container">
           <div class="scene-prompt-text">${sp.prompt}</div>
         </div>
@@ -598,6 +630,15 @@ function initEventListeners() {
     document.getElementById('btnConfirmStyle').addEventListener('click', generateElementPrompts);
     document.getElementById('btnGenerateScenes').addEventListener('click', generateScenes);
     document.getElementById('btnAddElement').addEventListener('click', addNewElement);
+    document.getElementById('btnAddDensityRule')?.addEventListener('click', addDensityRule);
+
+    document.getElementById('btnSelectAllScenes')?.addEventListener('click', () => {
+        document.querySelectorAll('.scene-checkbox').forEach(cb => cb.checked = true);
+    });
+
+    document.getElementById('btnDeselectAllScenes')?.addEventListener('click', () => {
+        document.querySelectorAll('.scene-checkbox').forEach(cb => cb.checked = false);
+    });
 
     document.getElementById('btnDownloadFull')?.addEventListener('click', () => downloadFile('full'));
     document.getElementById('btnDownloadClean')?.addEventListener('click', () => downloadFile('clean'));
@@ -610,6 +651,60 @@ function initEventListeners() {
         document.getElementById('btnConfirmStyle').disabled = !hasText;
     });
 }
+
+// =============== DENSITY RULES ===============
+function renderDensityRules() {
+    const container = document.getElementById('densityRulesContainer');
+    if (!container) return;
+    container.innerHTML = state.densityRules.map((rule, idx) => `
+        <div class="density-rule" style="display: flex; gap: 8px; align-items: center;">
+            <input type="text" class="form-input" style="width: 70px; padding: 8px; text-align: center;" value="${rule.start}" oninput="formatTimeInput(this, ${idx}, 'start')" placeholder="00:00">
+            <span style="font-size: 13px; color: var(--text-dim);">até</span>
+            <input type="text" class="form-input" style="width: 70px; padding: 8px; text-align: center;" value="${rule.end}" oninput="formatTimeInput(this, ${idx}, 'end')" placeholder="Fim">
+            <input type="number" class="form-input" style="width: 70px; padding: 8px; text-align: center;" value="${rule.density}" onchange="updateDensityRule(${idx}, 'density', this.value)" min="1" max="999">
+            <span style="font-size: 13px; color: var(--text-dim);">imagens</span>
+            ${state.densityRules.length > 1 ? `<button class="btn-icon danger" onclick="removeDensityRule(${idx})" style="width: 28px; height: 28px; margin-left: 8px;">🗑️</button>` : ''}
+        </div>
+    `).join('');
+}
+
+window.formatTimeInput = function (input, idx, field) {
+    let val = input.value.replace(/\D/g, ''); // Remove on-digits
+    if (val.length > 4) val = val.slice(0, 4);
+
+    if (val.length >= 3) {
+        val = val.slice(0, 2) + ':' + val.slice(2);
+    }
+    input.value = val;
+    state.densityRules[idx][field] = val;
+};
+
+window.updateDensityRule = function (idx, field, value) {
+    state.densityRules[idx][field] = value;
+};
+
+window.removeDensityRule = function (idx) {
+    state.densityRules.splice(idx, 1);
+    renderDensityRules();
+};
+
+window.addDensityRule = function () {
+    let nextStart = '00:00';
+    if (state.densityRules.length > 0) {
+        let lastEnd = state.densityRules[state.densityRules.length - 1].end;
+        if (lastEnd && lastEnd.length === 5 && lastEnd.includes(':')) {
+            const parts = lastEnd.split(':').map(Number);
+            if (!isNaN(parts[0]) && !isNaN(parts[1])) {
+                let totalSeconds = parts[0] * 60 + parts[1] + 1;
+                const m = Math.floor(totalSeconds / 60);
+                const s = totalSeconds % 60;
+                nextStart = String(m).padStart(2, '0') + ':' + String(s).padStart(2, '0');
+            }
+        }
+    }
+    state.densityRules.push({ start: nextStart, end: '', density: 10 });
+    renderDensityRules();
+};
 
 // =============== UTILITIES ===============
 function showLoading(text, subtext) {

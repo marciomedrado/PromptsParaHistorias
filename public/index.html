@@ -1,13 +1,17 @@
 <!DOCTYPE html>
 <html lang="pt-BR">
+
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta name="description" content="Ferramenta que recebe narrações em .srt e gera prompts de imagens em movimento consistentes para acompanhar a história">
+  <meta name="description"
+    content="Ferramenta que recebe narrações em .srt e gera prompts de imagens em movimento consistentes para acompanhar a história">
   <title>PromptsParaHistorias — Gerador de Prompts Visuais</title>
   <link rel="stylesheet" href="styles.css">
-  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎬</text></svg>">
+  <link rel="icon"
+    href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎬</text></svg>">
 </head>
+
 <body>
 
   <!-- Background Effects -->
@@ -38,7 +42,8 @@
         <div class="logo-icon">🎬</div>
         <h1 class="app-title">PromptsParaHistorias</h1>
       </div>
-      <p class="app-subtitle">Transforme narrações em .srt em prompts de imagens em movimento com consistência visual total</p>
+      <p class="app-subtitle">Transforme narrações em .srt em prompts de imagens em movimento com consistência visual
+        total</p>
     </header>
 
     <!-- Status Bar -->
@@ -74,6 +79,17 @@
           <h2 class="step-title">Upload do Arquivo SRT</h2>
           <p class="step-description">Carregue o arquivo de narração .srt da sua história</p>
         </div>
+      </div>
+
+      <div class="config-section">
+        <label class="form-label" style="display: block; margin-bottom: 8px;">Quantidade de Imagens por Trecho</label>
+        <p class="form-hint" style="margin-bottom: 12px;">Defina a quantidade de imagens a serem geradas para cada
+          período de tempo da sua narração.</p>
+        <div id="densityRulesContainer" style="display: flex; flex-direction: column; gap: 10px;">
+          <!-- Populated by JS -->
+        </div>
+        <button id="btnAddDensityRule" class="btn btn-secondary btn-sm" style="margin-top: 16px;">➕ Adicionar
+          Trecho</button>
       </div>
 
       <div class="upload-zone" id="uploadZone">
@@ -161,10 +177,25 @@
         <button class="btn btn-secondary" id="btnAddElement">➕ Adicionar Elemento</button>
       </div>
 
+      <!-- Scene Selection Section -->
+      <div class="scene-selection-section">
+        <div class="section-header">
+          <h3>🎬 Selecionar Trechos para Gerar</h3>
+          <div class="selection-actions">
+            <button class="btn btn-tiny" id="btnSelectAllScenes">Selecionar Todos</button>
+            <button class="btn btn-tiny" id="btnDeselectAllScenes">Desmarcar Todos</button>
+          </div>
+        </div>
+        <p class="step-description">Selecione quais cenas você deseja gerar prompts no momento</p>
+        <div class="scenes-selection-grid" id="scenesSelectionGrid">
+          <!-- Populated by JS -->
+        </div>
+      </div>
+
       <div class="btn-group">
         <button class="btn btn-secondary" onclick="goToStep(2)">← Voltar</button>
         <button class="btn btn-primary" id="btnGenerateScenes">
-          🎬 Gerar Prompts de Cenas
+          🎬 Gerar Prompts das Cenas Selecionadas
         </button>
       </div>
     </section>
@@ -206,4 +237,5 @@
 
   <script src="app.js"></script>
 </body>
+
 </html>
